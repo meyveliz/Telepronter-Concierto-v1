@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Teleprompter Ultimate - Mey Véliz & Gemini</title>
+    <style>
+        :root { --font-size: 65px; --primary: #ffff00; }
+        body { background-color: #000; color: #fff; font-family: 'Arial', sans-serif; margin: 0; overflow: hidden; display: flex; height: 100vh; user-select: none; }
+        
+        /* Menú Lateral */
+        #playlist-sidebar {
+            width: 400px; background: #111; border-right: 3px solid #333;
+            height: 100%; overflow-y: auto; padding: 25px;
+            position: fixed; left: -400px; transition: left 0.3s; z-index: 3000;
+        }
+        #playlist-sidebar.visible { left: 0; }
+        .song-item-row { display: flex; align-items: center; border-bottom: 1px solid #222; }
+        .song-item { padding: 18px; cursor: pointer; color: #ccc; flex-grow: 1; display: flex; align-items: center; }
+        .song-number { color: var(--primary); font-weight: bold; margin-right: 15px; font-family: monospace; font-size: 22px; }
+        .song-active { background: #222; color: #fff; border-left: 6px solid var(--primary); font-weight: bold; }
+        .btn-edit-small { background: transparent; color: #555; border: none; padding: 10px; cursor: pointer; font-size: 20px; }
+        .btn-edit-small:hover { color: var(--primary); }
+
+        /* Modales */
+        #modal-add {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: none; align-items: center; justify-content: center; z-index: 5000;
+        }
+        #modal-content { background: #222; padding: 30px; border-radius: 15px; width: 500px; display: flex; flex-direction: column; gap: 15px; border: 1px solid #444; }
+        #modal-content input, #modal-content textarea { background: #111; border: 1px solid #444; color: #fff; padding: 12px; border-radius: 5px; font-size: 16px; }
+        #modal-content textarea { height: 250px; font-family: monospace; }
+        
+        /* Área Principal */
+        #main-view { flex-grow: 1; position: relative; display: flex; flex-direction: column; }
+        #scroll-container { margin-top: 40vh; padding: 0 12%; transition: transform 0.2s ease-out; pointer-events: none; }
+        .linea { font-size: var(--font-size); font-weight: bold; margin-bottom: 90px; line-height: 1.2; }
+        
+        .esteban { color: var(--primary); } .lauro { color: #00ffff; } .duo { color: #ffffff; }
+        .word { display: inline-block; margin-right: 22px; transition: color 0.1s; }
+        .read { color: #1a1a1a !important; }
+        .listening-now { border-bottom: 3px solid rgba(255,255,255,0.2); }
+
+        /* Barra Superior */
+        #tech-bar { position: fixed; top: 0; left: 0; width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 10px 25px; background: rgba(10,10,10,0.95); z-index: 1000; border-bottom: 1px solid #333; }
+        .btn-ctrl { background: #222; color: #fff; border: 1px solid #444; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 12px; }
+        .btn-add { background: var(--primary); color: #000; border: none; }
+        .btn-io { color: #0f0; border-color: #0f0; }
+        .btn-mic-on { color: #0f0; border-color: #0f0; }
+        .btn-mic-off { color: #f00; border-color: #f00; opacity: 0.6; }
+        
+        #timer { color:#0f0; font-family:monospace; font-size:26px; }
+        .vumetro { width: 100px; height: 8px; background: #222; border-radius: 4px; overflow: hidden; }
+        #vumetro-fill { width: 0%; height: 100%; background: linear-gradient(to right, #0f0, #ff0, #f00); }
+        #file-input { display: none; }
+    </style>
+</head>
+<body onclick="controlClick(event)">
+
+    <input type="file" id="file-input" accept=".json" onchange="importarData(event)">
+
+    <div id="modal-add">
+        <div id="modal-content" onclick="event.stopPropagation()">
+            <h2 id="modal-title" style="margin:0; color:var(--primary)">Cargar Canción</h2>
+            <input type="text" id="new-title" placeholder="Título">
+            <textarea id="new-lyrics" placeholder="esteban: Letra&#10;lauro: Letra"></textarea>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-ctrl btn-add" style="flex:1" onclick="guardarCancion()">GUARDAR</button>
+                <button class="btn-ctrl" style="flex:1" onclick="cerrarModal()">CANCELAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="playlist-sidebar">
+        <h3>SETLIST MASTER</h3>
+        <div id="song-list"></div>
+    </div>
+
+    <div id="main-view">
+        <div id="tech-bar">
+            <div style="display:flex; gap:8px;">
+                <button class="btn-ctrl" onclick="event.stopPropagation(); toggleMenu();">☰ MENU</button>
+                <button class="btn-ctrl btn-add" onclick="event.stopPropagation(); abrirModal();">+ NUEVA</button>
+                <div style="margin-left:10px; display: flex; align-items: center;">
+                    <div class="vumetro"><div id="vumetro-fill"></div></div>
+                </div>
+            </div>
+            
+            <div id="timer">00:00</div>
+
+            <div style="display:flex; gap:8px;">
+                <button id="btn-mic" class="btn-ctrl btn-mic-off" onclick="event.stopPropagation(); toggleMic();">🎤 VOZ: OFF</button>
+                <button class="btn-ctrl btn-io" onclick="event.stopPropagation(); exportarData();">💾 EXPORTAR</button>
+                <button class="btn-ctrl btn-io" onclick="event.stopPropagation(); document.getElementById('file-input').click();">📂 IMPORTAR</button>
+            </div>
+        </div>
+        <div id="scroll-container"></div>
+    </div>
+
+    <script>
+        let playlistData = {
+            "Provócame": ["esteban: Provócame", "lauro: un poco más", "duo: Provócame"]
+        };
+
+        let currentSongKey = null;
+        let allWordSpans = [];
+        let currentWordIndex = 0;
+        let translateY = 0;
+        let seconds = 0;
+        let timerInterval;
+        let isMicEnabled = false;
+
+        const container = document.getElementById('scroll-container');
+        const songListUI = document.getElementById('song-list');
+        const vumetroFill = document.getElementById('vumetro-fill');
+
+        // --- MOTOR DE VOZ ---
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = 'es-MX'; recognition.continuous = true; recognition.interimResults = true;
+
+        recognition.onresult = (e) => {
+            if(!isMicEnabled) return;
+            let transcript = "";
+            for (let i = e.resultIndex; i < e.results.length; i++) { transcript += e.results[i][0].transcript.toLowerCase(); }
+            for(let i = currentWordIndex; i < Math.min(currentWordIndex + 3, allWordSpans.length); i++) {
+                let cleanWord = allWordSpans[i].innerText.toLowerCase().replace(/[.,!¡?¿]/g, "");
+                if(transcript.includes(cleanWord)) { avanzarPalabra(i); break; }
+            }
+        };
+        recognition.onend = () => { if(isMicEnabled) recognition.start(); };
+
+        function toggleMic() {
+            isMicEnabled = !isMicEnabled;
+            const btn = document.getElementById('btn-mic');
+            if(isMicEnabled) {
+                btn.innerText = "🎤 VOZ: ON"; btn.className = "btn-ctrl btn-mic-on";
+                setupAudio(); try { recognition.start(); } catch(e){}
+            } else {
+                btn.innerText = "🎤 VOZ: OFF"; btn.className = "btn-ctrl btn-mic-off";
+                recognition.stop();
+            }
+        }
+
+        async function setupAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const audioContext = new AudioContext();
+                const analyser = audioContext.createAnalyser();
+                const microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser); analyser.fftSize = 64;
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                function update() {
+                    analyser.getByteFrequencyData(dataArray);
+                    let sum = dataArray.reduce((a,b) => a + b, 0);
+                    vumetroFill.style.width = Math.min((sum/dataArray.length) * 2.5, 100) + "%";
+                    requestAnimationFrame(update);
+                }
+                update();
+            } catch (e) {}
+        }
+
+        // --- SISTEMA DE ARCHIVOS ---
+        function exportarData() {
+            const blob = new Blob([JSON.stringify(playlistData, null, 2)], { type: "application/json" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `playlist_mey_veliz.json`;
+            a.click();
+        }
+
+        function importarData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    playlistData = JSON.parse(e.target.result);
+                    renderizarLista();
+                    loadSong(Object.keys(playlistData)[0]);
+                } catch(err) { alert("Archivo no válido"); }
+            };
+            reader.readAsText(file);
+        }
+
+        // --- CORE TELEPROMPTER ---
+        function toggleMenu() { document.getElementById('playlist-sidebar').classList.toggle('visible'); }
+        function abrirModal(editKey = null) {
+            currentSongKey = editKey;
+            document.getElementById('modal-title').innerText = editKey ? "Editar" : "Nueva";
+            document.getElementById('new-title').value = editKey || "";
+            document.getElementById('new-lyrics').value = editKey ? playlistData[editKey].join('\n') : "";
+            document.getElementById('modal-add').style.display = 'flex';
+        }
+        function cerrarModal() { document.getElementById('modal-add').style.display = 'none'; }
+
+        function guardarCancion() {
+            const titulo = document.getElementById('new-title').value.trim();
+            const letraRaw = document.getElementById('new-lyrics').value.trim();
+            if(!titulo || !letraRaw) return;
+            if(currentSongKey && currentSongKey !== titulo) delete playlistData[currentSongKey];
+            playlistData[titulo] = letraRaw.split('\n');
+            renderizarLista(); cerrarModal(); loadSong(titulo);
+        }
+
+        function loadSong(songName) {
+            container.innerHTML = ""; allWordSpans = []; currentWordIndex = 0; translateY = 0;
+            container.style.transform = `translateY(0px)`;
+            if(!playlistData[songName]) return;
+            playlistData[songName].forEach((lineaStr) => {
+                const parts = lineaStr.split(": ");
+                const artista = parts.length > 1 ? parts[0].trim() : "duo";
+                const texto = parts.length > 1 ? parts[1] : parts[0];
+                const divLinea = document.createElement('div');
+                divLinea.className = `linea ${artista}`;
+                texto.split(" ").forEach(palabra => {
+                    const span = document.createElement('span');
+                    span.innerText = palabra; span.className = 'word';
+                    allWordSpans.push(span); divLinea.appendChild(span);
+                });
+                container.appendChild(divLinea);
+            });
+            if(allWordSpans[0]) allWordSpans[0].classList.add('listening-now');
+            document.querySelectorAll('.song-item-row').forEach(row => row.classList.toggle('song-active', row.dataset.key === songName));
+            document.getElementById('playlist-sidebar').classList.remove('visible');
+            seconds = 0; clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                seconds++; timerUI.innerText = `${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`;
+            }, 1000);
+        }
+
+        function avanzarPalabra(targetIndex) {
+            if (targetIndex < allWordSpans.length) {
+                for(let i = currentWordIndex; i <= targetIndex; i++) {
+                    allWordSpans[i].classList.add('read');
+                    allWordSpans[i].classList.remove('listening-now');
+                }
+                currentWordIndex = targetIndex + 1;
+                if (currentWordIndex < allWordSpans.length) {
+                    allWordSpans[currentWordIndex].classList.add('listening-now');
+                    const rect = allWordSpans[currentWordIndex].getBoundingClientRect();
+                    if (rect.top > window.innerHeight / 1.8) {
+                        translateY -= 110; container.style.transform = `translateY(${translateY}px)`;
+                    }
+                }
+            }
+        }
+
+        function controlClick(e) {
+            // Evita que el clic en botones o menús avance el teleprompter
+            if (e.target.closest('.btn-ctrl') || e.target.closest('#playlist-sidebar') || e.target.closest('#modal-content') || e.target.closest('.btn-edit-small')) return;
+            avanzarPalabra(currentWordIndex);
+        }
+
+        function renderizarLista() {
+            songListUI.innerHTML = "";
+            Object.keys(playlistData).forEach((song, idx) => {
+                const row = document.createElement('div');
+                row.className = 'song-item-row'; row.dataset.key = song;
+                row.innerHTML = `<div class="song-item" onclick="event.stopPropagation(); loadSong('${song}')"><span class="song-number">${(idx + 1).toString().padStart(2, '0')}</span> ${song}</div><button class="btn-edit-small" onclick="event.stopPropagation(); abrirModal('${song}')">✏️</button>`;
+                songListUI.appendChild(row);
+            });
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+            if (e.key.toLowerCase() === "m") toggleMenu();
+            if (e.code === "Space") { avanzarPalabra(currentWordIndex); e.preventDefault(); }
+            if (e.code === "KeyW") { translateY -= 60; container.style.transform = `translateY(${translateY}px)`; }
+            if (e.code === "KeyS") { translateY += 60; container.style.transform = `translateY(${translateY}px)`; }
+        });
+
+        renderizarLista(); loadSong(Object.keys(playlistData)[0]);
+    </script>
+</body>
+</html>
